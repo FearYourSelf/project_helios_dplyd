@@ -1,0 +1,7 @@
+{
+  "name": "Project_Helios_UNRELEASED",
+  "description": "A minimalist, soothing AI companion for relaxation, sleep storytelling, and guided meditation.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
