@@ -22,7 +22,9 @@ export class AudioEngine {
   private activeNodes: AudioNode[] = []; 
   private isAmbientPlaying: boolean = false;
   private melodyInterval: any = null;
-  private musicVolume: number = 0.5; // Default music volume
+  
+  private targetMusicVolume: number = 0.5; // The user-set volume
+  private isDucked: boolean = false;       // Logic state
 
   constructor() {
     // Initialize lazily
@@ -66,8 +68,8 @@ export class AudioEngine {
       // Chain: Music -> Analyser -> Volume -> Reverb -> Master
       this.musicVolumeNode.connect(this.ambientAnalyser);
       this.ambientAnalyser.connect(this.reverbNode);
-      // Dry signal mixed in slightly? No, let's go full wet for ambient for now or mix
-      this.ambientAnalyser.connect(this.masterGain); // Direct dry signal
+      // Direct dry signal mix
+      this.ambientAnalyser.connect(this.masterGain); 
     }
     
     if (this.context.state === 'suspended') {
@@ -94,12 +96,33 @@ export class AudioEngine {
     this.reverbNode.buffer = impulse;
   }
 
+  // Sets the base volume requested by user
   setMusicVolume(val: number) {
-      this.musicVolume = val;
-      if (this.musicVolumeNode && this.isAmbientPlaying) {
-          // Smooth transition
-          this.musicVolumeNode.gain.setTargetAtTime(val, this.context?.currentTime || 0, 0.5);
+      this.targetMusicVolume = val;
+      if (!this.isDucked) {
+          this.applyVolume(val);
       }
+  }
+
+  // Logic to apply volume smoothly
+  private applyVolume(val: number, duration: number = 0.5) {
+      if (this.musicVolumeNode && this.context) {
+          this.musicVolumeNode.gain.setTargetAtTime(val, this.context.currentTime, duration);
+      }
+  }
+
+  // Audio Ducking: Lowers music when AI speaks
+  duckMusic(shouldDuck: boolean) {
+      if (!this.isAmbientPlaying || !this.musicVolumeNode) return;
+      
+      this.isDucked = shouldDuck;
+      
+      // If ducking, go to 20% of target volume, else go back to full target
+      const target = shouldDuck ? (this.targetMusicVolume * 0.2) : this.targetMusicVolume;
+      
+      // Use a slower ramp for unducking (swelling back up)
+      const rampTime = shouldDuck ? 0.5 : 2.0; 
+      this.applyVolume(target, rampTime);
   }
 
   toggleMute(shouldMute: boolean) {
@@ -128,9 +151,7 @@ export class AudioEngine {
   }
 
   disconnectMicrophone() {
-      // We don't necessarily stop the stream to avoid permission prompts repeatedly,
-      // but we could disconnect the nodes if needed. 
-      // For now, we keep it active but the visualizer chooses when to look at it.
+      // Keep stream active to prevent permission prompts
   }
 
   getVoiceAnalyser() { return this.voiceAnalyser; }
@@ -143,6 +164,9 @@ export class AudioEngine {
 
     // Stop any currently playing speech to avoid overlap
     this.stopSpeech();
+
+    // Trigger Ducking
+    this.duckMusic(true);
 
     try {
         const buffer = await this.context.decodeAudioData(audioBuffer);
@@ -158,12 +182,15 @@ export class AudioEngine {
             source.onended = () => {
                 if (this.currentSource === source) {
                     this.currentSource = null;
+                    // Release Ducking
+                    this.duckMusic(false);
                 }
                 resolve(null);
             };
         });
     } catch (e) {
         console.error("Error decoding audio data", e);
+        this.duckMusic(false); // Safety release
     }
   }
 
@@ -175,6 +202,7 @@ export class AudioEngine {
               // Ignore errors if already stopped
           }
           this.currentSource = null;
+          this.duckMusic(false); // Release ducking if manually stopped
       }
   }
 
@@ -197,7 +225,7 @@ export class AudioEngine {
     const now = this.context.currentTime;
     this.musicVolumeNode.gain.cancelScheduledValues(now);
     this.musicVolumeNode.gain.setValueAtTime(0, now);
-    this.musicVolumeNode.gain.linearRampToValueAtTime(this.musicVolume, now + 3);
+    this.musicVolumeNode.gain.linearRampToValueAtTime(this.targetMusicVolume, now + 3);
 
     // Scale: D Major Pentatonic (D, E, F#, A, B) - Very positive and dreamy
     // Lower octave for pads, higher for bells
@@ -323,6 +351,7 @@ export class AudioEngine {
         });
         this.activeNodes = [];
         this.isAmbientPlaying = false;
+        this.isDucked = false;
     }, 3100); // Wait for fade out
   }
 }

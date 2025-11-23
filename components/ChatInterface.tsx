@@ -38,6 +38,13 @@ const TypewriterMessage: React.FC<{ text: string }> = ({ text }) => {
   return <span className="animate-fade-in">{displayedText}</span>;
 };
 
+const SUGGESTIONS = [
+    "Help me fall asleep",
+    "Guided 5-minute breathing",
+    "Tell me a calm story",
+    "Just comfort me"
+];
+
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, isTyping, modelIsThinking }) => {
   const [input, setInput] = React.useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -62,14 +69,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
     // Root is full width/height to allow gradient to span full screen
     <div className="flex flex-col h-full w-full z-10 relative">
       
-      {/* Messages Area - Constrained to max-w-2xl for readability */}
-      {/* Added [mask-image] for top fade effect */}
-      <div className="flex-1 w-full max-w-2xl mx-auto overflow-y-auto no-scrollbar space-y-8 px-6 pt-32 pb-48 [mask-image:linear-gradient(to_bottom,transparent_0%,black_15%,black_100%)]">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-500 mt-32 opacity-40 animate-fade-in select-none">
-            <p className="text-xl font-light tracking-wide">"Relaxation is the art of letting go."</p>
-          </div>
-        )}
+      {/* Messages Area */}
+      {/* Reduced top padding (pt-20) to pull suggestions higher. Added spacing between elements. */}
+      <div className="flex-1 w-full max-w-2xl mx-auto overflow-y-auto no-scrollbar space-y-8 px-6 pt-20 pb-48 [mask-image:linear-gradient(to_bottom,transparent_0%,black_15%,black_100%)]">
+        
+        {/* Quote and Suggestions Header - Always visible at top of stream */}
+        {/* Large margin-bottom (mb-[35vh]) creates a 'hole' for the Visualizer Orb to sit in without overlapping text */}
+        <div className="flex flex-col items-center gap-6 mt-2 mb-[35vh] animate-fade-in shrink-0">
+            <div className="text-center text-gray-400 opacity-60 select-none px-4">
+              <p className="text-xl font-light tracking-wide">"Relaxation is the art of letting go."</p>
+            </div>
+            
+            {/* Suggestion Chips */}
+            <div className="flex flex-wrap justify-center gap-3 max-w-lg px-2">
+                {SUGGESTIONS.map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => onSendMessage(s)}
+                      className="bg-white/5 hover:bg-white/10 text-white/70 hover:text-white/90 backdrop-blur-md border border-white/10 rounded-full px-4 py-2 text-[10px] md:text-xs uppercase tracking-widest transition-all duration-500 hover:scale-105 whitespace-nowrap"
+                    >
+                        {s}
+                    </button>
+                ))}
+            </div>
+        </div>
         
         {messages.map((msg, index) => {
            const isLast = index === messages.length - 1;
@@ -115,10 +138,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Gradient Overlay - Reduced height and opacity to stop dimming text */}
+      {/* Gradient Overlay */}
       <div className="absolute bottom-0 left-0 w-full h-[40vh] bg-gradient-to-t from-black via-black/50 to-transparent pointer-events-none" />
 
-      {/* Input Area - Constrained Content */}
+      {/* Input Area */}
       <div className="absolute bottom-0 left-0 w-full pb-10 px-6 pointer-events-none">
         <form onSubmit={handleSubmit} className="relative w-full max-w-xl mx-auto pointer-events-auto">
             <input

@@ -1,7 +1,6 @@
 
 // Use the provided key directly to avoid process.env runtime errors in the browser
 const ELEVEN_LABS_API_KEY = "sk_03d87b5aac167ccfc25390da1e7caed180dfd5aaaf1401a4";
-const VOICE_ID = 'KmnvDXRA0HU55Q0aqkPG'; 
 
 // Helper to remove [tags], (tags), and *asterisks* so the voice doesn't read them out loud
 const cleanTextForSpeech = (text: string): string => {
@@ -12,7 +11,7 @@ const cleanTextForSpeech = (text: string): string => {
     .trim();
 };
 
-export const streamSpeech = async (text: string): Promise<ArrayBuffer | null> => {
+export const streamSpeech = async (text: string, voiceId: string): Promise<ArrayBuffer | null> => {
   if (!ELEVEN_LABS_API_KEY) {
     console.error("Eleven Labs API Key is missing.");
     return null;
@@ -26,7 +25,7 @@ export const streamSpeech = async (text: string): Promise<ArrayBuffer | null> =>
 
   try {
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
       {
         method: 'POST',
         headers: {
@@ -38,9 +37,12 @@ export const streamSpeech = async (text: string): Promise<ArrayBuffer | null> =>
           text: textToSpeak,
           model_id: "eleven_turbo_v2_5", 
           voice_settings: {
-            stability: 0.35, 
-            similarity_boost: 0.75,
-            style: 0.0,
+            // Lower stability allows for more emotion/breathiness
+            stability: 0.3, 
+            // Moderate similarity to keep identity
+            similarity_boost: 0.8,
+            // Slight style increase to emphasize the [softly] tags
+            style: 0.2,
             use_speaker_boost: true
           }
         }),

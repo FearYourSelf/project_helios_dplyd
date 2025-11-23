@@ -7,15 +7,21 @@ export type VisualizerState = 'idle' | 'listening' | 'thinking' | 'speaking';
 interface VisualizerProps {
   state: VisualizerState;
   isAmbient: boolean;
+  voiceType: 'helios' | 'elara';
 }
 
-const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient }) => {
+const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient, voiceType }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // Use Refs to store current interpolation values to persist between renders
   const currentRadiusRef = useRef(60);
   const currentHueRef = useRef(200);
+  // Track background hue separately for smooth transitions between personas
+  const currentBgHueRef = useRef(voiceType === 'helios' ? 210 : 260);
   const phaseRef = useRef(0);
+  
+  // Stardust state
+  const starsRef = useRef<{x: number, y: number, size: number, speed: number, alpha: number}[]>([]);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -24,6 +30,25 @@ const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient }) => {
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // CRITICAL FIX: Set dimensions BEFORE generating stars
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Initialize stars if empty or if canvas size changed drastically
+    if (starsRef.current.length === 0) {
+        for(let i=0; i<100; i++) { // Increased count slightly
+            starsRef.current.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2,
+                speed: 0.1 + Math.random() * 0.3,
+                alpha: Math.random()
+            });
+        }
+    }
+
+    const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end;
 
     const render = () => {
       phaseRef.current += 0.01;
@@ -38,8 +63,12 @@ const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient }) => {
       ctx.clearRect(0, 0, width, height);
 
       // --- LAYER 1: AURORA (Ambient Background) ---
-      // Smooth gradient mesh
-      const hueBase = (Math.sin(time * 0.1) * 20 + 210); // Blue/Purple base
+      // Smoothly interpolate the base hue for the background
+      const targetBgBase = voiceType === 'helios' ? 210 : 260;
+      currentBgHueRef.current = lerp(currentBgHueRef.current, targetBgBase, 0.02); // Slow transition (0.02)
+
+      // Apply sine wave modulation on top of the smoothed base
+      const hueBase = Math.sin(time * 0.1) * 20 + currentBgHueRef.current;
       
       // We always draw background, but modify alpha based on isAmbient
       const bgOpacity = isAmbient ? 1 : 0.4;
@@ -49,6 +78,23 @@ const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient }) => {
       gradient.addColorStop(1, `hsla(${hueBase + 40}, 50%, 5%, 1)`);
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, width, height);
+
+      // --- LAYER 1.5: STARDUST ---
+      ctx.fillStyle = 'white';
+      starsRef.current.forEach(star => {
+          star.y -= star.speed; // Move up
+          if (star.y < 0) {
+              star.y = height;
+              star.x = Math.random() * width; // Respawn randomly x
+          }
+          
+          const twinkle = Math.abs(Math.sin(time * 2 + star.x));
+          ctx.globalAlpha = star.alpha * twinkle * (isAmbient ? 0.8 : 0.3);
+          ctx.beginPath();
+          ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+          ctx.fill();
+      });
+      ctx.globalAlpha = 1.0;
 
       if (isAmbient) {
           const drawBlob = (xOff: number, yOff: number, color: string, rScale: number) => {
@@ -70,30 +116,29 @@ const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient }) => {
       // --- LAYER 2: THE CORE (Reacts to State) ---
       
       let targetRadius = 60;
-      let targetHue = 200; // Blueish
+      let targetHue = voiceType === 'helios' ? 200 : 270; // Blue vs Purple base
       let audioData = new Uint8Array(0);
       let analyser: AnalyserNode | null = null;
 
       // Determine Target State
       if (state === 'speaking') {
           analyser = audioEngine.getVoiceAnalyser();
-          targetHue = 190; // Light Blue
+          targetHue = voiceType === 'helios' ? 190 : 250; 
           targetRadius = 90;
       } else if (state === 'listening') {
           analyser = audioEngine.getMicAnalyser();
-          targetHue = 280; // Purple/Pink indicating listening
+          targetHue = voiceType === 'helios' ? 280 : 320; // Purple vs Pink
           targetRadius = 80;
       } else if (state === 'thinking') {
           targetHue = 160; // Teal/Greenish
           targetRadius = 70;
       } else {
           // Idle
-          targetHue = 210;
+          targetHue = voiceType === 'helios' ? 210 : 260;
           targetRadius = 60 + Math.sin(time * 2) * 5; // Breathe
       }
 
       // Smoothly Interpolate Radius & Hue
-      const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end;
       currentRadiusRef.current = lerp(currentRadiusRef.current, targetRadius, 0.05);
       currentHueRef.current = lerp(currentHueRef.current, targetHue, 0.05);
 
@@ -174,7 +219,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient }) => {
 
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [state, isAmbient]);
+  }, [state, isAmbient, voiceType]);
 
   // Handle Resize
   useEffect(() => {
@@ -185,7 +230,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient }) => {
       }
     };
     window.addEventListener('resize', handleResize);
-    handleResize();
+    handleResize(); // Initial sizing
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
