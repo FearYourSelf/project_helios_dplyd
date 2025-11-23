@@ -16,7 +16,7 @@ declare global {
 // Voice Constants
 const VOICE_HELIOS_ID = 'KmnvDXRA0HU55Q0aqkPG';
 // Elara Voice ID
-const VOICE_ELARA_ID = 'BpjGufoPiobT79j2vtj4'; 
+const VOICE_ELARA_ID = 'kbX5GFsXCR5EpQkZJgeu'; 
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
