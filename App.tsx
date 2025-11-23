@@ -15,7 +15,8 @@ declare global {
 
 // Voice Constants
 const VOICE_HELIOS_ID = 'KmnvDXRA0HU55Q0aqkPG';
-const VOICE_ELARA_ID = 'BpjGufoPiobT79j2vtj4'; // Updated Elara Voice
+// Elara Voice ID
+const VOICE_ELARA_ID = 'BpjGufoPiobT79j2vtj4'; 
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -48,6 +49,8 @@ const App: React.FC = () => {
   useEffect(() => {
      audioEngine.duckMusic(isSpeaking);
   }, [isSpeaking]);
+
+  const currentAgentName = currentVoiceId === VOICE_HELIOS_ID ? 'Helios' : 'Elara';
 
   const getVisualizerState = (): VisualizerState => {
     if (isSpeaking) return 'speaking';
@@ -109,9 +112,11 @@ const App: React.FC = () => {
     }));
 
     const modelType = useDeepThinking ? ModelType.Deep : ModelType.Fast;
+    // Derive agent name from current voice ID for the persona prompt
+    const agentName = currentVoiceId === VOICE_HELIOS_ID ? 'Helios' : 'Elara';
 
     try {
-      const responseText = await generateTextResponse(finalPrompt, modelType, history, nameToUse || undefined);
+      const responseText = await generateTextResponse(finalPrompt, modelType, history, nameToUse || undefined, agentName);
 
       const botMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -142,6 +147,15 @@ const App: React.FC = () => {
       console.error("Error in conversation loop", error);
       setIsTyping(false);
       setIsSpeaking(false);
+      
+      // Fallback message so user sees a thematic response instead of silence
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        text: "I sense a brief drift in the ether. Could you please whisper that to me again?",
+        sender: Sender.Helios,
+        timestamp: Date.now()
+      }]);
+
       isProcessingRef.current = false;
       if (voiceModeRef.current) {
         try { recognition?.start(); setIsListening(true); } catch(e) {}
@@ -241,8 +255,8 @@ const App: React.FC = () => {
         className={`absolute inset-0 z-[60] flex flex-col items-center justify-between py-24 cursor-pointer transition-all duration-1000 ease-in-out transform ${hasStarted ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'}`}
         onClick={handleStartApp}
       >
-          {/* Radial Gradient Vignette: Transparent center reveals the breathing circle */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(0,0,0,0)_20%,rgba(0,0,0,1)_85%)] -z-10" />
+          {/* Radial Gradient Vignette: Transparent center (35%) reveals the breathing circle */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(0,0,0,0)_35%,rgba(0,0,0,1)_85%)] -z-10" />
           
           <div className="text-center space-y-4">
                <h1 className="text-4xl font-light tracking-[0.5em] text-white/90">HELIOS</h1>
@@ -311,13 +325,14 @@ const App: React.FC = () => {
             onSendMessage={handleSendMessage} 
             isTyping={isTyping}
             modelIsThinking={useDeepThinking}
+            agentName={currentAgentName}
         />
         
         <div className="absolute bottom-36 left-1/2 transform -translate-x-1/2 z-40">
             <button onClick={toggleVoiceMode} className={`p-6 rounded-full transition-all duration-500 transform hover:scale-105 cursor-pointer backdrop-blur-xl border ${voiceMode ? 'bg-red-500/20 text-red-300 border-red-500/30 shadow-[0_0_40px_rgba(255,50,50,0.2)] animate-pulse' : 'bg-white/5 text-white/90 border-white/10 hover:bg-white/10 shadow-lg'}`}>
                 {voiceMode ? (
                    isListening ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
                    ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 animate-spin"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                    )

@@ -2,6 +2,9 @@
 // Use the provided key directly to avoid process.env runtime errors in the browser
 const ELEVEN_LABS_API_KEY = "sk_03d87b5aac167ccfc25390da1e7caed180dfd5aaaf1401a4";
 
+// Constants for ID checking
+const VOICE_HELIOS_ID = 'KmnvDXRA0HU55Q0aqkPG';
+
 // Helper to remove [tags], (tags), and *asterisks* so the voice doesn't read them out loud
 const cleanTextForSpeech = (text: string): string => {
   return text
@@ -23,6 +26,23 @@ export const streamSpeech = async (text: string, voiceId: string): Promise<Array
   // If cleaning results in empty text (e.g. only had tags), don't call API
   if (!textToSpeak) return null;
 
+  // Determine settings based on which voice is asking
+  const isHelios = voiceId === VOICE_HELIOS_ID;
+
+  const voiceSettings = isHelios ? {
+    // HELIOS SETTINGS (Warm, Natural, Expressive)
+    stability: 0.4,       // Lower stability = more emotion/variability
+    similarity_boost: 0.8, 
+    style: 0.2,           // Some style for natural Australian flow
+    use_speaker_boost: true // Boost for clarity
+  } : {
+    // ELARA SETTINGS (Calm, Slow, Hypnotic)
+    stability: 0.6,       // High stability = very consistent/calm tone
+    similarity_boost: 0.9,
+    style: 0.0,           // Zero style = flat, less "acting", no excitement
+    use_speaker_boost: false // No boost = softer, quieter volume
+  };
+
   try {
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
@@ -36,15 +56,7 @@ export const streamSpeech = async (text: string, voiceId: string): Promise<Array
         body: JSON.stringify({
           text: textToSpeak,
           model_id: "eleven_turbo_v2_5", 
-          voice_settings: {
-            // Lower stability allows for more emotion/breathiness
-            stability: 0.3, 
-            // Moderate similarity to keep identity
-            similarity_boost: 0.8,
-            // Slight style increase to emphasize the [softly] tags
-            style: 0.2,
-            use_speaker_boost: true
-          }
+          voice_settings: voiceSettings
         }),
       }
     );

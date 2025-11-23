@@ -7,6 +7,7 @@ interface ChatInterfaceProps {
   onSendMessage: (text: string) => void;
   isTyping: boolean;
   modelIsThinking: boolean;
+  agentName?: string;
 }
 
 // Helper to clean text of audio tags [tag], (tag), or *action*
@@ -45,7 +46,7 @@ const SUGGESTIONS = [
     "Just comfort me"
 ];
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, isTyping, modelIsThinking }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, isTyping, modelIsThinking, agentName = 'Helios' }) => {
   const [input, setInput] = React.useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -70,8 +71,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
     <div className="flex flex-col h-full w-full z-10 relative">
       
       {/* Messages Area */}
-      {/* Reduced top padding (pt-20) to pull suggestions higher. Added spacing between elements. */}
-      <div className="flex-1 w-full max-w-2xl mx-auto overflow-y-auto no-scrollbar space-y-8 px-6 pt-20 pb-48 [mask-image:linear-gradient(to_bottom,transparent_0%,black_15%,black_100%)]">
+      {/* Increased pt-40 to clear header and fade mask. Fixed mask-image to pixels for consistent fade start. */}
+      <div className="flex-1 w-full max-w-2xl mx-auto overflow-y-auto no-scrollbar space-y-8 px-6 pt-40 pb-48 [mask-image:linear-gradient(to_bottom,transparent_0px,black_128px,black_100%)]">
         
         {/* Quote and Suggestions Header - Always visible at top of stream */}
         {/* Large margin-bottom (mb-[35vh]) creates a 'hole' for the Visualizer Orb to sit in without overlapping text */}
@@ -130,7 +131,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
               {modelIsThinking ? (
                 <span>Thinking deeply...</span>
               ) : (
-                <span>Helios is typing...</span>
+                <span>{agentName} is typing...</span>
               )}
             </div>
           </div>
@@ -148,7 +149,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Write to Helios..."
+            placeholder={`Write to ${agentName}...`}
             className="w-full bg-white/5 backdrop-blur-xl rounded-full px-8 py-4 text-white/90 placeholder-white/30 text-center focus:outline-none focus:bg-white/10 transition-all duration-300 border-none ring-0 shadow-none"
             />
         </form>
