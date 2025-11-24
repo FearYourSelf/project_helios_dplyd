@@ -1,6 +1,6 @@
 
 // Use the provided key directly to avoid process.env runtime errors in the browser
-const ELEVEN_LABS_API_KEY = "sk_046542254a371c7f36919091f1e0b665f5092595ddb452ad";
+const ELEVEN_LABS_API_KEY = "sk_5e5006aa0dacb1910a5d3a59ccd215ebf21f5cf4e29097a9";
 
 // Constants for ID checking
 const VOICE_HELIOS_ID = 'KmnvDXRA0HU55Q0aqkPG';
