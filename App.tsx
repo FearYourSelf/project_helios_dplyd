@@ -16,7 +16,7 @@ declare global {
 // Voice Constants
 const VOICE_HELIOS_ID = 'KmnvDXRA0HU55Q0aqkPG';
 // Elara Voice ID
-const VOICE_ELARA_ID = 'kbX5GFsXCR5EpQkZJgeu'; 
+const VOICE_ELARA_ID = 'VhxAIIZM8IRmnl5fyeyk'; 
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -310,12 +310,6 @@ const App: React.FC = () => {
             <button onClick={toggleVoice} className={`flex flex-col items-center px-3 py-1 text-[8px] md:text-[10px] uppercase tracking-widest rounded-full transition-all cursor-pointer shrink-0 ${currentVoiceId === VOICE_ELARA_ID ? 'text-pink-300' : 'text-blue-200 hover:text-white'}`}>
                 <span className="font-semibold">{currentVoiceId === VOICE_HELIOS_ID ? 'HELIOS' : 'ELARA'}</span>
             </button>
-            
-            <div className="h-4 w-px bg-white/10 mx-1 shrink-0"></div>
-
-            <button onClick={() => setUseDeepThinking(!useDeepThinking)} className={`flex flex-col items-center px-3 py-1 text-[8px] md:text-[10px] uppercase tracking-widest rounded-full transition-all cursor-pointer shrink-0 ${useDeepThinking ? 'text-purple-300' : 'text-gray-400 hover:text-white'}`}>
-                <span className="font-semibold">{useDeepThinking ? 'WISDOM' : 'CASUAL'}</span>
-            </button>
         </div>
       </header>
 
@@ -332,7 +326,7 @@ const App: React.FC = () => {
             <button onClick={toggleVoiceMode} className={`p-6 rounded-full transition-all duration-500 transform hover:scale-105 cursor-pointer backdrop-blur-xl border ${voiceMode ? 'bg-red-500/20 text-red-300 border-red-500/30 shadow-[0_0_40px_rgba(255,50,50,0.2)] animate-pulse' : 'bg-white/5 text-white/90 border-white/10 hover:bg-white/10 shadow-lg'}`}>
                 {voiceMode ? (
                    isListening ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 116 0v8.25a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
                    ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 animate-spin"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                    )

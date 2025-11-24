@@ -1,6 +1,6 @@
 
 // Use the provided key directly to avoid process.env runtime errors in the browser
-const ELEVEN_LABS_API_KEY = "sk_03d87b5aac167ccfc25390da1e7caed180dfd5aaaf1401a4";
+const ELEVEN_LABS_API_KEY = "sk_046542254a371c7f36919091f1e0b665f5092595ddb452ad";
 
 // Constants for ID checking
 const VOICE_HELIOS_ID = 'KmnvDXRA0HU55Q0aqkPG';
@@ -37,10 +37,11 @@ export const streamSpeech = async (text: string, voiceId: string): Promise<Array
     use_speaker_boost: true // Boost for clarity
   } : {
     // ELARA SETTINGS (Calm, Slow, Hypnotic)
-    stability: 0.6,       // High stability = very consistent/calm tone
+    // Updated to Style 0.15 and Boost True to prevent silence on this specific Voice ID
+    stability: 0.5,       
     similarity_boost: 0.9,
-    style: 0.0,           // Zero style = flat, less "acting", no excitement
-    use_speaker_boost: false // No boost = softer, quieter volume
+    style: 0.15,          // Slight style required for generation
+    use_speaker_boost: true // Boost required for clarity on this model
   };
 
   try {
