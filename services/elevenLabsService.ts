@@ -8,16 +8,43 @@ export const VOICE_ELARA_ID = 'Atp5cNFg1Wj5gyKD7HWV';
 export const VOICE_NSD_ID = 'NNl6r8mD7vthiJatiJt1';
 
 // Helper to remove [tags], (tags), and *asterisks* so the voice doesn't read them out loud
+// UPDATED: Now maps certain timing/breathing tags to punctuation to help the TTS pause naturally
 const cleanTextForSpeech = (text: string): string => {
-  return text
-    .replace(/^(Helios:|Elara:|NSD:)/gim, '') // Remove Speaker Labels at start of lines
-    .replace(/\[.*?\]/g, '') // remove [brackets]
-    .replace(/\(.*?\)/g, '') // remove (parentheses)
-    .replace(/\*.*?\*/g, '') // remove *asterisks*
-    .replace(/<.*?>/g, '')   // remove <xml-like tags> just in case
-    .replace(/\s\s+/g, ' ')  // Collapse multiple spaces into one
-    .replace(/\n\s*\n/g, '\n') // Remove empty lines created by removing tags
+  let cleaned = text;
+
+  // 1. Nuanced Pause Mapping (The "Rhythm" Layer)
+  // We translate "Stage Directions" into "Punctuation" the AI Voice understands.
+  
+  // Heavy Silence (3 dots + space + 3 dots)
+  cleaned = cleaned.replace(/\[(very long pause|silence)\]/gi, '... ... ');
+  
+  // Standard Pause (3 dots)
+  cleaned = cleaned.replace(/\[(long pause|pause)\]/gi, '... ');
+  
+  // Brief Pause (Comma)
+  cleaned = cleaned.replace(/\[(brief pause|catch breath)\]/gi, ', ');
+  
+  // Vocalizations (Hints for the AI to make a sound)
+  cleaned = cleaned.replace(/\[(clearing throat|soft clearing throat)\]/gi, 'hm. ');
+  cleaned = cleaned.replace(/\[(hmm|hum|gentle hum)\]/gi, 'hmm... ');
+  
+  // Emotional Breaks (Em-dash for sudden shifts or sighs)
+  cleaned = cleaned.replace(/\[(sigh|deep sigh|soft sigh|shaky sigh|sharp inhale)\]/gi, ' — ');
+  
+  // 2. Remove Speaker Labels at start of lines so they aren't read
+  cleaned = cleaned.replace(/^(Helios:|Elara:|NSD:)/gim, '');
+
+  // 3. Strip all remaining [brackets], (parentheses), *asterisks* (The "Stripping" Layer)
+  cleaned = cleaned
+    .replace(/\[.*?\]/g, '') 
+    .replace(/\(.*?\)/g, '') 
+    .replace(/\*.*?\*/g, '') 
+    .replace(/<.*?>/g, '')   
+    .replace(/\s\s+/g, ' ')  // Collapse multiple spaces
+    .replace(/\n\s*\n/g, '\n') // Remove empty lines
     .trim();
+    
+  return cleaned;
 };
 
 export const streamSpeech = async (text: string, voiceId: string): Promise<ArrayBuffer | null> => {
