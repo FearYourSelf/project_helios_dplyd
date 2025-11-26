@@ -1,4 +1,5 @@
 
+
 export class AudioEngine {
   private context: AudioContext | null = null;
   
@@ -22,6 +23,10 @@ export class AudioEngine {
   private activeNodes: AudioNode[] = []; 
   private isAmbientPlaying: boolean = false;
   private melodyInterval: any = null;
+  
+  // Pink Noise (Texture)
+  private pinkNoiseNode: AudioBufferSourceNode | null = null;
+  private pinkNoiseGain: GainNode | null = null;
   
   private targetMusicVolume: number = 0.5; // The user-set volume
   private isDucked: boolean = false;       // Logic state
@@ -49,12 +54,12 @@ export class AudioEngine {
       // Voice Analyser (Helios Output)
       this.voiceAnalyser = this.context.createAnalyser();
       this.voiceAnalyser.fftSize = 512; 
-      this.voiceAnalyser.smoothingTimeConstant = 0.8;
+      this.voiceAnalyser.smoothingTimeConstant = 0.9; // Smoother visualizer
 
       // Mic Analyser (User Input)
       this.micAnalyser = this.context.createAnalyser();
       this.micAnalyser.fftSize = 512;
-      this.micAnalyser.smoothingTimeConstant = 0.8;
+      this.micAnalyser.smoothingTimeConstant = 0.9; // Smoother visualizer
 
       // Music Volume Control
       this.musicVolumeNode = this.context.createGain();
@@ -63,7 +68,12 @@ export class AudioEngine {
       // Ambient Analyser (Visuals for music)
       this.ambientAnalyser = this.context.createAnalyser();
       this.ambientAnalyser.fftSize = 256;
-      this.ambientAnalyser.smoothingTimeConstant = 0.9;
+      this.ambientAnalyser.smoothingTimeConstant = 0.95; // Even smoother for ambient
+
+      // Pink Noise Setup
+      this.pinkNoiseGain = this.context.createGain();
+      this.pinkNoiseGain.gain.value = 0;
+      this.pinkNoiseGain.connect(this.masterGain);
 
       // Chain: Music -> Analyser -> Volume -> Reverb -> Master
       this.musicVolumeNode.connect(this.ambientAnalyser);
@@ -96,11 +106,56 @@ export class AudioEngine {
     this.reverbNode.buffer = impulse;
   }
 
+  // Creates a loopable pink noise buffer (Rain texture)
+  private startPinkNoise() {
+      if (!this.context || !this.pinkNoiseGain) return;
+      
+      const bufferSize = 2 * this.context.sampleRate; // 2 seconds
+      const buffer = this.context.createBuffer(1, bufferSize, this.context.sampleRate);
+      const output = buffer.getChannelData(0);
+      let b0, b1, b2, b3, b4, b5, b6;
+      b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+      
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        output[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+        output[i] *= 0.11; // Compensate for gain
+        b6 = white * 0.115926;
+      }
+      
+      this.pinkNoiseNode = this.context.createBufferSource();
+      this.pinkNoiseNode.buffer = buffer;
+      this.pinkNoiseNode.loop = true;
+      this.pinkNoiseNode.connect(this.pinkNoiseGain);
+      this.pinkNoiseNode.start(0);
+  }
+
+  private stopPinkNoise() {
+      if (this.pinkNoiseNode) {
+          try {
+             this.pinkNoiseNode.stop();
+             this.pinkNoiseNode.disconnect();
+          } catch(e) {}
+          this.pinkNoiseNode = null;
+      }
+  }
+
   // Sets the base volume requested by user
   setMusicVolume(val: number) {
       this.targetMusicVolume = val;
       if (!this.isDucked) {
           this.applyVolume(val);
+      }
+      // Also adjust pink noise volume relative to music
+      if (this.pinkNoiseGain && this.context) {
+          // REDUCED VOLUME: 0.5% of master volume instead of 5%
+          this.pinkNoiseGain.gain.setTargetAtTime(val * 0.005, this.context.currentTime, 0.5); 
       }
   }
 
@@ -220,12 +275,19 @@ export class AudioEngine {
     this.context.resume();
 
     this.isAmbientPlaying = true;
+    this.startPinkNoise();
 
     // Smooth Fade In (3 seconds)
     const now = this.context.currentTime;
     this.musicVolumeNode.gain.cancelScheduledValues(now);
     this.musicVolumeNode.gain.setValueAtTime(0, now);
     this.musicVolumeNode.gain.linearRampToValueAtTime(this.targetMusicVolume, now + 3);
+    
+    // Fade in pink noise
+    if (this.pinkNoiseGain) {
+        this.pinkNoiseGain.gain.setValueAtTime(0, now);
+        this.pinkNoiseGain.gain.linearRampToValueAtTime(this.targetMusicVolume * 0.005, now + 5);
+    }
 
     // Scale: D Major Pentatonic (D, E, F#, A, B) - Very positive and dreamy
     // Lower octave for pads, higher for bells
@@ -343,8 +405,15 @@ export class AudioEngine {
         this.musicVolumeNode.gain.setValueAtTime(this.musicVolumeNode.gain.value, now);
         this.musicVolumeNode.gain.linearRampToValueAtTime(0, now + 3);
     }
+    
+    // Fade out pink noise
+    if (this.pinkNoiseGain && this.context) {
+        const now = this.context.currentTime;
+        this.pinkNoiseGain.gain.linearRampToValueAtTime(0, now + 3);
+    }
 
     setTimeout(() => {
+        this.stopPinkNoise();
         this.activeNodes.forEach(node => {
             try { node.disconnect(); } catch(e){}
             try { (node as any).stop(); } catch(e){}

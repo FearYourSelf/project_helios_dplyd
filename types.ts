@@ -1,6 +1,9 @@
+
 export enum Sender {
   User = 'user',
-  Helios = 'helios'
+  Helios = 'helios',
+  Duo = 'duo', // Helios and Elara together
+  NSD = 'nsd' // Neural Somatic Driver
 }
 
 export interface Message {

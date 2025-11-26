@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Message, Sender, ModelType } from './types';
-import { generateTextResponse } from './services/geminiService';
-import { streamSpeech } from './services/elevenLabsService';
+import { generateTextResponse, loadUserMemory, saveUserName } from './services/geminiService';
+import { streamSpeech, VOICE_HELIOS_ID, VOICE_ELARA_ID, VOICE_NSD_ID } from './services/elevenLabsService';
 import { audioEngine } from './services/audioEngine';
 import Visualizer, { VisualizerState } from './components/Visualizer';
 import ChatInterface from './components/ChatInterface';
@@ -13,10 +13,8 @@ declare global {
   }
 }
 
-// Voice Constants
-const VOICE_HELIOS_ID = 'KmnvDXRA0HU55Q0aqkPG';
-// Elara Voice ID
-const VOICE_ELARA_ID = 'VhxAIIZM8IRmnl5fyeyk'; 
+// Duo Mode ID (Virtual ID for logic)
+const VOICE_DUO_ID = 'duo_mode_virtual_id';
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -29,6 +27,10 @@ const App: React.FC = () => {
   // Voice Selection State
   const [currentVoiceId, setCurrentVoiceId] = useState(VOICE_HELIOS_ID);
   
+  // Active speaker for Visualizer (Helios/Elara/Duo)
+  // This overrides the currentVoiceId for visual purposes during Duo playback
+  const [activeDuoSpeaker, setActiveDuoSpeaker] = useState<string | null>(null);
+
   // Voice Mode State
   const [voiceMode, setVoiceMode] = useState(false);
   const [isListening, setIsListening] = useState(false); 
@@ -37,6 +39,10 @@ const App: React.FC = () => {
   const [userName, setUserName] = useState<string | null>(null);
   const [recognition, setRecognition] = useState<any>(null);
   const [musicVolume, setMusicVolume] = useState(0.5);
+
+  // Button Long Press Logic
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressRef = useRef(false);
 
   // Refs
   const voiceModeRef = useRef(voiceMode);
@@ -50,7 +56,45 @@ const App: React.FC = () => {
      audioEngine.duckMusic(isSpeaking);
   }, [isSpeaking]);
 
-  const currentAgentName = currentVoiceId === VOICE_HELIOS_ID ? 'Helios' : 'Elara';
+  // Screen Wake Lock Hook
+  useEffect(() => {
+    let wakeLock: any = null;
+
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && hasStarted) {
+            // Robust Error Handling for Wake Lock
+            wakeLock = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) {
+        // Silently fail if permissions are denied or feature unavailable
+        console.debug('Wake Lock request failed (likely permission policy):', err);
+      }
+    };
+
+    if (hasStarted) {
+        requestWakeLock();
+    }
+
+    // Re-acquire lock if visibility changes (e.g. user tabs away and back)
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && hasStarted) {
+            requestWakeLock();
+        }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) {
+         wakeLock.release().catch((e: any) => console.debug('Wake Lock release failed', e));
+      }
+    };
+  }, [hasStarted]);
+
+  // Determine Agent Name for UI and Prompts
+  const currentAgentName = currentVoiceId === VOICE_HELIOS_ID ? 'Helios' : currentVoiceId === VOICE_ELARA_ID ? 'Elara' : currentVoiceId === VOICE_NSD_ID ? 'NSD' : 'Duo';
 
   const getVisualizerState = (): VisualizerState => {
     if (isSpeaking) return 'speaking';
@@ -59,20 +103,53 @@ const App: React.FC = () => {
     return 'idle';
   };
 
+  const getVisualizerVoiceType = () => {
+      if (activeDuoSpeaker === 'helios') return 'helios';
+      if (activeDuoSpeaker === 'elara') return 'elara';
+      
+      if (currentVoiceId === VOICE_HELIOS_ID) return 'helios';
+      if (currentVoiceId === VOICE_ELARA_ID) return 'elara';
+      if (currentVoiceId === VOICE_NSD_ID) return 'nsd';
+      return 'duo';
+  };
+
+  const triggerHaptic = (pattern: number | number[] = 10) => {
+     if (typeof navigator !== 'undefined' && navigator.vibrate) {
+         navigator.vibrate(pattern);
+     }
+  };
+
+  const getGreeting = (voiceId: string, name?: string | null) => {
+      if (name) {
+          if (voiceId === VOICE_ELARA_ID) return `[softly] Welcome back, ${name}. The current is gentle tonight.`;
+          if (voiceId === VOICE_DUO_ID) return `Helios: Good to see you again, ${name}. [pause] Elara: We were waiting for the quiet.`;
+          if (voiceId === VOICE_NSD_ID) return `[firmly] Calibration complete. Welcome back, ${name}. Systems are resonant.`;
+          return `[softly] Welcome back, ${name}. [pause] The stars are quiet tonight. How are you holding up?`;
+      } else {
+          if (voiceId === VOICE_ELARA_ID) return `[softly] I am Elara. The quiet is waiting. What is your name?`;
+          if (voiceId === VOICE_DUO_ID) return `Helios: We are here. [pause] Elara: Together. To listen. What name shall we know you by?`;
+          if (voiceId === VOICE_NSD_ID) return `[firmly] I am NSD. Neural Somatic Driver initialized. State your name for calibration.`;
+          return `[softly] I'm Helios. Before we drift off, what name should I call you?`;
+      }
+  };
+
   const handleStartApp = () => {
       audioEngine.init();
       setHasStarted(true);
-      // Optional: Start ambient automatically? 
-      // toggleAmbient(); 
-      setTimeout(() => {
-          const greeting = "[softly] G'day. I'm Helios. Before we drift off, what name should I call you?";
-          setMessages([{
-              id: 'init-1',
-              text: greeting,
-              sender: Sender.Helios,
-              timestamp: Date.now()
-          }]);
-      }, 1000);
+      triggerHaptic(20);
+      
+      const memory = loadUserMemory();
+      const storedName = memory.name || null;
+      setUserName(storedName);
+
+      const greetingText = getGreeting(currentVoiceId, storedName);
+
+      setMessages([{
+          id: 'init-1',
+          text: greetingText,
+          sender: currentVoiceId === VOICE_DUO_ID ? Sender.Duo : (currentVoiceId === VOICE_NSD_ID ? Sender.NSD : Sender.Helios),
+          timestamp: Date.now()
+      }]);
   };
 
   const handleSendMessage = useCallback(async (text: string) => {
@@ -84,24 +161,28 @@ const App: React.FC = () => {
     };
     setMessages(prev => [...prev, userMsg]);
     setIsTyping(true);
+    triggerHaptic(5); // Light tap on send
 
     audioEngine.init();
 
+    // Determine what name to use for the prompt (memory vs current input)
     let nameToUse = userName;
     let finalPrompt = text;
     
     if (!userName) {
-        // Detect if user clicked a suggestion chip (Command) instead of giving a name
+        // Simple logic to detect if this is a name introduction or a quick action
         const lowerText = text.toLowerCase();
         const isCommand = lowerText.includes("sleep") || lowerText.includes("breathing") || lowerText.includes("story") || lowerText.includes("comfort");
 
         if (isCommand) {
-            setUserName("Friend");
+            // Quick action: Use "Friend" temporarily, DO NOT save
             nameToUse = "Friend";
             finalPrompt = text;
         } else {
+            // Assume it's a name: Save it
             setUserName(text);
             nameToUse = text;
+            saveUserName(text); // Use the explicit saveUserName function
             finalPrompt = `My name is ${text}. Please acknowledge it warmly and ask how you can help me relax today.`;
         }
     }
@@ -112,29 +193,60 @@ const App: React.FC = () => {
     }));
 
     const modelType = useDeepThinking ? ModelType.Deep : ModelType.Fast;
-    // Derive agent name from current voice ID for the persona prompt
-    const agentName = currentVoiceId === VOICE_HELIOS_ID ? 'Helios' : 'Elara';
-
+    
     try {
-      const responseText = await generateTextResponse(finalPrompt, modelType, history, nameToUse || undefined, agentName);
+      const responseText = await generateTextResponse(finalPrompt, modelType, history, nameToUse || undefined, currentAgentName);
 
       const botMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: responseText,
-        sender: Sender.Helios,
+        // CRITICAL: Set Sender to Duo if we are in Duo mode, so the UI aligns it correctly
+        sender: currentVoiceId === VOICE_DUO_ID ? Sender.Duo : (currentVoiceId === VOICE_NSD_ID ? Sender.NSD : Sender.Helios), 
         timestamp: Date.now()
       };
       setMessages(prev => [...prev, botMsg]);
       setIsTyping(false);
 
       if (!isMuted) {
-          // Pass the current voice ID to the stream function
-          const audioBuffer = await streamSpeech(responseText, currentVoiceId);
-          if (audioBuffer) {
-            setIsSpeaking(true);
-            await audioEngine.playSpeech(audioBuffer);
-            setIsSpeaking(false);
+          setIsSpeaking(true);
+          triggerHaptic([10, 50, 10]);
+
+          if (currentVoiceId === VOICE_DUO_ID) {
+              // DUO MODE LOGIC: Split dialogue and play sequentially
+              const lines = responseText.split('\n');
+              for (const line of lines) {
+                  const cleanLine = line.trim();
+                  if (!cleanLine) continue;
+
+                  let segmentVoiceId = VOICE_HELIOS_ID; // Default
+                  let speakerName = 'helios';
+
+                  if (cleanLine.toLowerCase().startsWith('elara:')) {
+                      segmentVoiceId = VOICE_ELARA_ID;
+                      speakerName = 'elara';
+                  } else if (cleanLine.toLowerCase().startsWith('helios:')) {
+                      segmentVoiceId = VOICE_HELIOS_ID;
+                      speakerName = 'helios';
+                  }
+
+                  // Only generate if there is actual content
+                  if (cleanLine.length > 0) {
+                      setActiveDuoSpeaker(speakerName);
+                      const audioBuffer = await streamSpeech(cleanLine, segmentVoiceId);
+                      if (audioBuffer) {
+                          await audioEngine.playSpeech(audioBuffer);
+                      }
+                  }
+              }
+              setActiveDuoSpeaker(null);
+          } else {
+              // STANDARD MODE
+              const audioBuffer = await streamSpeech(responseText, currentVoiceId);
+              if (audioBuffer) {
+                await audioEngine.playSpeech(audioBuffer);
+              }
           }
+          setIsSpeaking(false);
       }
 
       // Voice Mode Loop
@@ -147,8 +259,8 @@ const App: React.FC = () => {
       console.error("Error in conversation loop", error);
       setIsTyping(false);
       setIsSpeaking(false);
+      setActiveDuoSpeaker(null);
       
-      // Fallback message so user sees a thematic response instead of silence
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         text: "I sense a brief drift in the ether. Could you please whisper that to me again?",
@@ -161,7 +273,7 @@ const App: React.FC = () => {
         try { recognition?.start(); setIsListening(true); } catch(e) {}
       }
     }
-  }, [messages, useDeepThinking, isMuted, userName, recognition, currentVoiceId]);
+  }, [messages, useDeepThinking, isMuted, userName, recognition, currentVoiceId, currentAgentName]);
 
   useEffect(() => {
     handleSendMessageRef.current = handleSendMessage;
@@ -206,6 +318,7 @@ const App: React.FC = () => {
   }, []);
 
   const toggleVoiceMode = () => {
+    triggerHaptic(15);
     if (!recognition) {
         alert("Speech recognition not supported.");
         return;
@@ -224,6 +337,7 @@ const App: React.FC = () => {
   };
 
   const toggleAmbient = () => {
+    triggerHaptic(10);
     audioEngine.init(); 
     const newState = !ambientEnabled;
     setAmbientEnabled(newState);
@@ -231,13 +345,73 @@ const App: React.FC = () => {
   };
 
   const toggleMute = () => {
+      triggerHaptic(10);
       const newState = !isMuted;
       setIsMuted(newState);
       audioEngine.toggleMute(newState);
   };
   
+  // Voice Toggle Logic with Long Press
+  const handleVoiceButtonDown = () => {
+    isLongPressRef.current = false;
+    pressTimerRef.current = setTimeout(() => {
+        isLongPressRef.current = true;
+        // Trigger Long Press Action (NSD)
+        triggerHaptic(50);
+        setCurrentVoiceId(VOICE_NSD_ID);
+        updateGreetingForNewVoice(VOICE_NSD_ID);
+    }, 1000); // 1 second hold
+  };
+
+  const handleVoiceButtonUp = () => {
+      if (pressTimerRef.current) {
+          clearTimeout(pressTimerRef.current);
+          pressTimerRef.current = null;
+      }
+      
+      if (!isLongPressRef.current) {
+          // It was a short press, do normal toggle
+          toggleVoice();
+      }
+      isLongPressRef.current = false;
+  };
+
+  const handleVoiceButtonCancel = () => {
+      if (pressTimerRef.current) {
+          clearTimeout(pressTimerRef.current);
+          pressTimerRef.current = null;
+      }
+      isLongPressRef.current = false;
+  };
+
+  const updateGreetingForNewVoice = (newVoiceId: string) => {
+      // If we are at the very start (intro message only), update the greeting
+      if (messages.length === 1 && messages[0].id === 'init-1') {
+          const newGreeting = getGreeting(newVoiceId, userName);
+          setMessages([{
+              id: 'init-1',
+              text: newGreeting,
+              // Ensure sender type matches current mode for initial greeting
+              sender: newVoiceId === VOICE_DUO_ID ? Sender.Duo : (newVoiceId === VOICE_NSD_ID ? Sender.NSD : Sender.Helios),
+              timestamp: Date.now()
+          }]);
+      }
+  };
+
   const toggleVoice = () => {
-      setCurrentVoiceId(prev => prev === VOICE_HELIOS_ID ? VOICE_ELARA_ID : VOICE_HELIOS_ID);
+      triggerHaptic(15);
+      // Cycle: HELIOS -> ELARA -> DUO -> HELIOS
+      // Note: NSD is hidden from the cycle, accessible only via Long Press
+      setCurrentVoiceId(prev => {
+          let next = VOICE_HELIOS_ID;
+          if (prev === VOICE_HELIOS_ID) next = VOICE_ELARA_ID;
+          else if (prev === VOICE_ELARA_ID) next = VOICE_DUO_ID;
+          else if (prev === VOICE_DUO_ID) next = VOICE_HELIOS_ID;
+          else if (prev === VOICE_NSD_ID) next = VOICE_HELIOS_ID; // Exit NSD back to Helios
+
+          updateGreetingForNewVoice(next);
+          return next;
+      });
   };
 
   const handleMusicVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -255,7 +429,6 @@ const App: React.FC = () => {
         className={`absolute inset-0 z-[60] flex flex-col items-center justify-between py-24 cursor-pointer transition-all duration-1000 ease-in-out transform ${hasStarted ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'}`}
         onClick={handleStartApp}
       >
-          {/* Radial Gradient Vignette: Transparent center (35%) reveals the breathing circle */}
           <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(0,0,0,0)_35%,rgba(0,0,0,1)_85%)] -z-10" />
           
           <div className="text-center space-y-4">
@@ -270,16 +443,14 @@ const App: React.FC = () => {
       <Visualizer 
         state={getVisualizerState()} 
         isAmbient={ambientEnabled} 
-        voiceType={currentVoiceId === VOICE_HELIOS_ID ? 'helios' : 'elara'}
+        voiceType={getVisualizerVoiceType()}
       />
 
-      {/* Header - Fixed overflow logic for mobile to prevent clipping */}
       <header className={`fixed top-0 left-0 w-full px-4 md:px-8 py-4 md:py-6 flex justify-between items-center z-50 pointer-events-none transition-opacity duration-1000 ${hasStarted ? 'opacity-100' : 'opacity-0'}`}>
         <div className="flex items-center gap-3 pointer-events-auto shrink-0">
             <h1 className="text-lg md:text-xl font-light tracking-[0.3em] text-white/80">HELIOS</h1>
         </div>
         
-        {/* Controls Container with horizontal scroll for mobile */}
         <div className="flex gap-2 md:gap-4 items-center pointer-events-auto bg-black/20 backdrop-blur-md p-2 rounded-full border border-white/5 transition-opacity hover:bg-black/30 overflow-x-auto no-scrollbar max-w-[60vw] md:max-w-none">
             <div className={`transition-all duration-500 overflow-hidden flex items-center shrink-0 ${ambientEnabled ? 'w-24 md:w-32 opacity-100 mr-2' : 'w-0 opacity-0'}`}>
                 <span className="text-[8px] md:text-[10px] text-gray-400 mr-2">MUSIC</span>
@@ -292,7 +463,7 @@ const App: React.FC = () => {
 
             <button onClick={toggleAmbient} className={`p-2 rounded-full transition-all duration-500 shrink-0 ${ambientEnabled ? 'bg-indigo-500/30 text-indigo-200' : 'text-gray-400 hover:text-white'}`}>
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 md:w-5 md:h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-2.863-2.538l.477-.136a2.25 2.25 0 011.716.322M9 14.25l-2.496-2.496a3.375 3.375 0 00-4.773 4.773L9 21.3m0-12.3v5.275a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-2.863-2.538l.477-.136a2.25 2.25 0 011.716.322" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-2.863-2.538l.477-.136a2.25 2.25 0 011.716.322M9 14.25l-2.496-2.496a3.375 3.375 0 00-4.773 4.773L9 21.3m0-12.3v5.275a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-2.863-2.538l.477-.136a2.25 2.25 0 011.716.322a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-2.863-2.538l.477-.136a2.25 2.25 0 011.716.322" />
                 </svg>
             </button>
 
@@ -306,9 +477,25 @@ const App: React.FC = () => {
 
             <div className="h-4 w-px bg-white/10 mx-1 shrink-0"></div>
 
-            {/* Voice Toggle */}
-            <button onClick={toggleVoice} className={`flex flex-col items-center px-3 py-1 text-[8px] md:text-[10px] uppercase tracking-widest rounded-full transition-all cursor-pointer shrink-0 ${currentVoiceId === VOICE_ELARA_ID ? 'text-pink-300' : 'text-blue-200 hover:text-white'}`}>
-                <span className="font-semibold">{currentVoiceId === VOICE_HELIOS_ID ? 'HELIOS' : 'ELARA'}</span>
+            <button 
+                onMouseDown={handleVoiceButtonDown}
+                onMouseUp={handleVoiceButtonUp}
+                onMouseLeave={handleVoiceButtonCancel}
+                onTouchStart={handleVoiceButtonDown}
+                onTouchEnd={handleVoiceButtonUp}
+                onTouchCancel={handleVoiceButtonCancel}
+                className={`flex flex-col items-center px-3 py-1 text-[8px] md:text-[10px] uppercase tracking-widest rounded-full transition-all cursor-pointer shrink-0 select-none 
+                    ${currentVoiceId === VOICE_ELARA_ID ? 'text-pink-300' 
+                    : currentVoiceId === VOICE_DUO_ID ? 'text-purple-300' 
+                    : currentVoiceId === VOICE_NSD_ID ? 'text-amber-300 font-bold'
+                    : 'text-blue-200 hover:text-white'}`}
+            >
+                <span className="font-semibold">
+                  {currentVoiceId === VOICE_HELIOS_ID ? 'HELIOS' 
+                   : currentVoiceId === VOICE_ELARA_ID ? 'ELARA' 
+                   : currentVoiceId === VOICE_NSD_ID ? 'NSD'
+                   : 'DUO'}
+                </span>
             </button>
         </div>
       </header>
@@ -326,12 +513,12 @@ const App: React.FC = () => {
             <button onClick={toggleVoiceMode} className={`p-6 rounded-full transition-all duration-500 transform hover:scale-105 cursor-pointer backdrop-blur-xl border ${voiceMode ? 'bg-red-500/20 text-red-300 border-red-500/30 shadow-[0_0_40px_rgba(255,50,50,0.2)] animate-pulse' : 'bg-white/5 text-white/90 border-white/10 hover:bg-white/10 shadow-lg'}`}>
                 {voiceMode ? (
                    isListening ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 116 0v8.25a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
                    ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 animate-spin"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
                    )
                 ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>
                 )}
             </button>
             {voiceMode && (
