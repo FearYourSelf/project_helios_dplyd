@@ -199,7 +199,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient, voiceType }) 
       }
 
       // --- LAYER 2.5: REACTIVE BLOOM (Glow behind orb) ---
-      const bloomRadius = currentRadiusRef.current * 2.5 + (vol * 100);
+      const bloomRadius = currentRadiusRef.current * 2.5 + (vol * 120); // Increased responsiveness
       const bloomGrad = ctx.createRadialGradient(cx, cy, currentRadiusRef.current * 0.5, cx, cy, bloomRadius);
       bloomGrad.addColorStop(0, `hsla(${currentHueRef.current}, 80%, 60%, 0.3)`);
       bloomGrad.addColorStop(1, `hsla(${currentHueRef.current}, 80%, 40%, 0)`);
@@ -231,7 +231,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ state, isAmbient, voiceType }) 
               // Map frequency to angle
               const idx = Math.floor((i / segments) * (audioData.length / 3)); 
               const val = audioData[idx] || 0;
-              distortion = (val / 255) * 30;
+              // Slightly more jittery/natural for the "Human" voice effect
+              distortion = (val / 255) * 35;
           }
           
           const finalR = r + distortion;
